@@ -1,0 +1,266 @@
+#include <graphics.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+#include <conio.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+void fEllipse(int c, int x, int y, int rx, int ry) {
+    setcolor(c); setfillstyle(SOLID_FILL, c); fillellipse(x, y, rx, ry);
+}
+
+void fPoly(int c, int n, int* p) {
+    setcolor(c); setfillstyle(SOLID_FILL, c); fillpoly(n, p);
+}
+
+double easeInOutSine(double t) { return -(cos(M_PI * t) - 1.0) / 2.0; }
+
+// ÂÌ«ﬂ· «·»Ì«‰«  («·” —ﬂ )
+struct Star { double x, y, driftSpeed; int baseBrightness; double twinklePhase; };
+struct Meteor { double x, y; bool active; int length; double speed; int trailFrames; };
+
+// 1. —”„ «· ÊÂÃ Œ·› «·‘„”
+void drawSkyGlow(int sunX, int sunY, double darkness) {
+    for(int r = 400; r > 50; r -= 50) {
+        int c = (int)(40 * ((400.0 - r) / 350.0) * (1.0 - darkness));
+        if (c > 0) fEllipse(COLOR(c, c, c + 10), sunX, sunY, r, r);
+    }
+}
+
+// 2. —”„ «·‰ÃÊ„ Ê ÕœÌÀ Õ—ﬂ Â«
+void drawStars(Star* s, int count, int frame, double darkness, int screenW) {
+    for (int i = 0; i < count; i++) {
+        s[i].x -= s[i].driftSpeed;
+        if (s[i].x < 0) s[i].x += screenW;
+        int t = s[i].baseBrightness + (int)(40 * sin(s[i].twinklePhase + frame * 0.05));
+        t = t > 255 ? 255 : (t < 20 ? 20 : t);
+        int b = t + (int)((255 - t) * darkness);
+        putpixel((int)s[i].x, (int)s[i].y, COLOR(b, b, b));
+    }
+}
+
+// 3. —”„ «·‰Ì«“ﬂ ÊÕ—ﬂ Â«
+void handleMeteors(Meteor* m, int count, int w, int h) {
+    for(int i = 0; i < count; i++) {
+        if(m[i].active) {
+            m[i].x += m[i].speed; m[i].y += m[i].speed * 0.8; m[i].trailFrames--;
+            if(m[i].trailFrames <= 0 || m[i].x > w || m[i].y > h) m[i].active = false;
+            else {
+                double intensity = m[i].trailFrames / 40.0;
+                int c = (int)(255 * (intensity > 1.0 ? 1.0 : intensity));
+                setcolor(COLOR(c, c, c));
+                line((int)m[i].x, (int)m[i].y, (int)(m[i].x - m[i].length), (int)(m[i].y - m[i].length * 0.8));
+            }
+        } else if(rand() % 300 == 0) {
+            m[i].active = true; m[i].x = rand() % (w / 2); m[i].y = -(rand() % 100);
+            m[i].speed = 12.0 + (rand() % 15); m[i].length = 25 + (rand() % 30); m[i].trailFrames = 30 + rand() % 20;
+        }
+    }
+}
+
+// 4. —”„ «·‘„” Ê√‘⁄ Â«
+void drawSun(int sunX, int sunY, int radius, int frame, double darkness) {
+    setcolor(YELLOW);
+    circle(sunX, sunY, radius);
+    setfillstyle(SOLID_FILL, YELLOW);
+    floodfill(sunX, sunY, YELLOW);
+
+    int sunRay = 12;
+    int maxiumRayLength = 30;
+    double angleOfSun = 0.03;
+
+    for (int i = 0; i < sunRay; i++) {
+        double angle = i * (2 * M_PI / sunRay) + frame * 0.01;
+        for (int j = 0; j < 3; j++) {
+            double factor = 1.0 - j * 0.3;
+            int rayLength = maxiumRayLength * factor;
+            int x1 = sunX + radius * cos(angle);
+            int y1 = sunY + radius * sin(angle);
+            int x2 = sunX + (radius + rayLength) * cos(angle + angleOfSun * factor);
+            int y2 = sunY + (radius + rayLength) * sin(angle + angleOfSun * factor);
+            int x3 = sunX + (radius + rayLength) * cos(angle - angleOfSun * factor);
+            int y3 = sunY + (radius + rayLength) * sin(angle - angleOfSun * factor);
+            int poly[6] = {x1, y1, x2, y2, x3, y3};
+            setfillstyle(SOLID_FILL, YELLOW);
+            fillpoly(3, poly);
+        }
+    }
+}
+
+// 5. —”„ «·ﬁ„—
+void drawMoon(int mX, int mY, int r) {
+    setcolor(DARKGRAY);
+    setfillstyle(SOLID_FILL, DARKGRAY);
+    fillellipse(mX, mY, r, r);
+}
+
+// 6. —”„ «·√—÷
+void drawEarth(int eX, int eY, int radius, double darkness) {
+    //  √ÀÌ— «· ⁄ Ì„ Œ·«· «·ﬂ”Ê›
+    int oceanColor = darkness > 0.5 ? COLOR(0, 0, 80) : BLUE;
+    setcolor(oceanColor);
+    setfillstyle(SOLID_FILL, oceanColor);
+    fillellipse(eX, eY, radius, radius);
+
+    int landColor = darkness > 0.5 ? COLOR(0, 50, 0) : GREEN;
+    setcolor(landColor);
+    setfillstyle(SOLID_FILL, landColor);
+
+    int africa[] = {
+        eX - 15, eY - 40,
+        eX + 10, eY - 50,
+        eX + 35, eY - 35,
+        eX + 45, eY - 15,
+        eX + 40, eY + 10,
+        eX + 25, eY + 25,
+        eX + 5, eY + 20,
+        eX - 10, eY + 5,
+        eX - 20, eY - 10,
+        eX - 15, eY - 40
+    };
+    fillpoly(10, africa);
+
+    int north_america[] = {
+        eX - 50, eY - 30,
+        eX - 35, eY - 45,
+        eX - 15, eY - 40,
+        eX - 10, eY - 25,
+        eX - 20, eY - 10,
+        eX - 40, eY - 15,
+        eX - 50, eY - 30
+    };
+    fillpoly(7, north_america);
+
+    int south_america[] = {
+        eX - 35, eY + 5,
+        eX - 20, eY + 0,
+        eX - 10, eY + 15,
+        eX - 15, eY + 30,
+        eX - 30, eY + 35,
+        eX - 40, eY + 20,
+        eX - 35, eY + 5
+    };
+    fillpoly(7, south_america);
+
+
+    int asia[] = {
+        eX + 20, eY - 45,
+        eX + 45, eY - 40,
+        eX + 55, eY - 25,
+        eX + 50, eY - 5,
+        eX + 35, eY + 0,
+        eX + 20, eY - 10,
+        eX + 15, eY - 25,
+        eX + 20, eY - 45
+    };
+    fillpoly(8, asia);
+
+    int australia[] = {
+        eX + 30, eY + 25,
+        eX + 45, eY + 20,
+        eX + 50, eY + 35,
+        eX + 35, eY + 40,
+        eX + 25, eY + 35,
+        eX + 30, eY + 25
+    };
+    fillpoly(6, australia);
+
+    int greenland[] = {
+        eX - 25, eY - 55,
+        eX - 10, eY - 58,
+        eX - 5, eY - 45,
+        eX - 15, eY - 42,
+        eX - 25, eY - 55
+    };
+    fillpoly(5, greenland);
+}
+
+// 7. —”„ «·’«—ÊŒ
+void drawRocket(int rX, int rY, int f, float sc = 1.8f) {
+    auto sx = [&](double v) { return rX + (int)(v * sc); };
+    auto sy = [&](double v) { return rY + (int)(v * sc); };
+
+    int len = 15 + (int)(10 * sin(f * 0.8));
+    int flame[] = { sx(0), sy(4), sx(-len - 5), sy(10), sx(0), sy(16) };
+    fPoly((f % 4 < 2) ? COLOR(255, 140, 0) : COLOR(255, 255, 100), 3, flame);
+
+    int core[] = { sx(0), sy(7), sx(-len/2), sy(10), sx(0), sy(13) };
+    fPoly(WHITE, 3, core);
+
+    int top[] = { sx(5), sy(0), sx(15), sy(-8), sx(25), sy(0) };
+    int bot[] = { sx(5), sy(20), sx(15), sy(28), sx(25), sy(20) };
+    fPoly(COLOR(150, 150, 150), 3, top); fPoly(COLOR(150, 150, 150), 3, bot);
+
+    int bCol = COLOR(220, 220, 220); setcolor(bCol); setfillstyle(SOLID_FILL, bCol);
+    bar(sx(0), sy(0), sx(60), sy(20));
+
+    setcolor(COLOR(130, 130, 130)); line(sx(0), sy(19), sx(60), sy(19)); line(sx(0), sy(18), sx(60), sy(18));
+
+    fEllipse(COLOR(60, 120, 220), sx(40), sy(10), (int)(6 * sc), (int)(6 * sc));
+    putpixel(sx(41), sy(8), WHITE); putpixel(sx(42), sy(9), WHITE);
+
+    int n[] = { sx(60), sy(0), sx(85), sy(10), sx(60), sy(20) };
+    fPoly(COLOR(200, 30, 30), 3, n);
+}
+
+int main() {
+    initwindow(1280, 720, "Cinematic Solar Eclipse with Earth Simulation");
+    int w = getmaxx() + 1, h = getmaxy() + 1;
+
+    Star stars[400]; srand((unsigned)time(0));
+    for (int i = 0; i < 400; i++) {
+        stars[i] = { (double)(rand()%w), (double)(rand()%h), (i < 200 ? 0.4 : 0.1) + ((rand()%10)/(i < 200 ? 10.0 : 30.0)), (i < 200 ? 140 : 50) + (rand()%(i < 200 ? 60 : 50)), (rand()%100)/10.0 };
+    }
+
+    Meteor meteors[5] = {0};
+
+    int sX = w * 0.2, sY = h / 2, sR = 50, mX = sX + sR + 40, rBaseY = 120, frame = 0;
+    int eX = w * 0.75, eY = h * 0.6, eR = 60;  // ≈Õœ«ÀÌ«  «·√—÷
+
+    setbkcolor(BLACK); cleardevice();
+    drawSkyGlow(sX, sY, 0.0);
+    drawStars(stars, 400, frame, 0.0, w);
+    drawSun(sX, sY, sR, frame, 0.0);
+    drawMoon(mX, (int)(-sR * 1.5), sR);
+    drawEarth(eX, eY, eR, 0.0);
+    drawRocket(w - 250, rBaseY, frame);
+
+    // ÷€ÿ… “— ⁄‘«‰ «·√‰Ì„Ì‘‰
+    getch(); while(kbhit()) getch();
+
+    int page = 0; double d = 1200.0, t = 0.0, stY = -sR * 1.5, enY = h + sR * 1.5;
+
+    // Õ·ﬁ… «·√‰Ì„Ì‘‰
+    while (!kbhit()) {
+        setactivepage(page); setbkcolor(BLACK); cleardevice();
+
+        double p = t / d; if (p > 1.0) p = 1.0;
+        int visY = (int)(stY + (enY - stY) * easeInOutSine(p));
+
+        double mP = ((double)visY - stY) / (enY - stY);
+        if (mP < 0) mP = 0; if (mP > 1) mP = 1;
+
+        double eP = 1.0 - abs(mP * 2.0 - 1.0);
+        double dF = eP * eP * eP * (eP * (eP * 6.0 - 15.0) + 10.0);
+
+        drawSkyGlow(sX, sY, dF);
+        drawStars(stars, 400, frame, dF, w);
+        handleMeteors(meteors, 5, w, h);
+        drawSun(sX, sY, sR, frame, dF);
+        drawMoon(mX, visY, sR + 2);
+        drawEarth(eX, eY, eR, dF);  // —”„ «·√—÷ „⁄  √ÀÌ— «·ﬂ”Ê›
+        drawRocket(((frame * 2) % (w + 240)) - 120, rBaseY + (int)(32.0 * sin(frame * 0.03)), frame);
+
+        // PHASE 2
+        setcolor(WHITE); settextstyle(DEFAULT_FONT, HORIZ_DIR, 2);
+        outtextxy(20, 20, (char*)"PHASE 2: SOLAR ECLIPSE WITH EARTH");
+        outtextxy(20, 50, (char*)"Press any key to exit.");
+
+        setvisualpage(page); page = 1 - page; t++; if (t >= d) t = 0.0; frame++; delay(16);
+    }
+
+    getch(); closegraph(); return 0;
+}
